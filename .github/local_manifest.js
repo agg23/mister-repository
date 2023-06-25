@@ -103,7 +103,7 @@ const main = async () => {
   };
 
   for (const { path, hash, size, url } of files) {
-    manifest.files[path] = {
+    manifest.files[`|${path}`] = {
       hash,
       size,
       url,
@@ -111,7 +111,7 @@ const main = async () => {
   }
 
   for (const folder of folders) {
-    manifest.folders[folder] = {};
+    manifest.folders[`|${folder}`] = {};
   }
 
   console.log(manifest);

@@ -1,0 +1,44 @@
+# When a commit is created and pushed
+on: push
+
+jobs:
+  update_manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout this repo, main branch
+        uses: actions/checkout@v3
+        with:
+          path: contents
+
+      - name: Checkout this repo, db branch
+        uses: actions/checkout@v3
+        with:
+          ref: db
+          path: db
+
+      - name: Checkout main script
+        uses: actions/checkout@v3
+        with:
+          path: ci_scripts
+          sparse-checkout: |
+            .github/local_manifest.js
+            .github/package-lock.json
+            .github/package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Run the updater script
+        run: |
+          cd $GITHUB_WORKSPACE/ci_scripts/.github
+          node local_manifest.js "$GITHUB_WORKSPACE/contents" https://github.com/agg23/mister-repository/raw/master/
+          mv -f manifest.json $GITHUB_WORKSPACE/db/manifest.json
+
+      - name: Commit new manifest
+        # This email address is based on the API's user ID for the Github bot
+        run: |
+          cd $GITHUB_WORKSPACE/db
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add manifest.json
+          git commit -m "Release Manifest"
+          git push

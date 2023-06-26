@@ -5,6 +5,7 @@ const fs = require("fs").promises;
 
 const dbID = "agg23_db";
 
+const ignoredFiles = [".gitkeep"];
 const ignoredDirectories = [".git", ".github"];
 
 const assetDir = pathModule.resolve(process.argv[2]);
@@ -47,6 +48,12 @@ const shouldSkipEntry = (path) => {
     if (path.includes(directory)) {
       return true;
     }
+  }
+
+  const filename = pathModule.basename(path);
+
+  if (ignoredFiles.includes(filename)) {
+    return true;
   }
 
   return false;

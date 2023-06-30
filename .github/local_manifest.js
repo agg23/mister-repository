@@ -8,8 +8,17 @@ const dbID = "agg23_db";
 const ignoredFiles = [".gitkeep"];
 const ignoredDirectories = [".git", ".github"];
 
+if (process.argv.length != 4) {
+  console.log("Expected local_manifest.js [asset dir] [base http url]");
+  process.exit(1);
+}
+
 const assetDir = pathModule.resolve(process.argv[2]);
-const baseUrl = process.argv[3];
+let baseUrl = process.argv[3];
+
+if (!baseUrl.endsWith("/")) {
+  baseUrl = `${baseUrl}/`;
+}
 
 const md5Hash = (buffer) =>
   crypto.createHash("md5").update(buffer).digest("hex");
@@ -66,8 +75,13 @@ const parseFile = async (path, parentPath) => {
   const file = await fs.readFile(path);
   const hash = md5Hash(file);
 
-  const relativePath = posixPath(pathModule.relative(parentPath, path));
+  let relativePath = posixPath(pathModule.relative(parentPath, path));
   const urlPath = posixPath(pathModule.relative(assetDir, path));
+
+  if (relativePath.startsWith("games/")) {
+    // This is in the relocatable paths. Add | to start
+    relativePath = `|${relativePath}`;
+  }
 
   return {
     path: relativePath,
@@ -93,7 +107,13 @@ const main = async () => {
       }
 
       if (entry.isDirectory()) {
-        const relativePath = posixPath(pathModule.relative(core.path, path));
+        let relativePath = posixPath(pathModule.relative(core.path, path));
+
+        if (relativePath === "games" || relativePath.startsWith("games/")) {
+          // This is in the relocatable paths. Add | to start
+          relativePath = `|${relativePath}`;
+        }
+
         folders.push(relativePath);
       } else {
         files.push(await parseFile(path, core.path));

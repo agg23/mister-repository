@@ -71,16 +71,28 @@ const shouldSkipEntry = (path) => {
 const posixPath = (path) =>
   path.split(pathModule.sep).join(pathModule.posix.sep);
 
-const parseFile = async (path, parentPath) => {
+const parseFile = async (path, parentPath, coreName) => {
   const file = await fs.readFile(path);
   const hash = md5Hash(file);
 
   let relativePath = posixPath(pathModule.relative(parentPath, path));
   const urlPath = posixPath(pathModule.relative(assetDir, path));
 
-  if (relativePath.startsWith("games/")) {
-    // This is in the relocatable paths. Add | to start
-    relativePath = `|${relativePath}`;
+  const tags = [coreName.toLowerCase()];
+  const parts = relativePath.split("/");
+  let pext = false;
+
+  if (parts[0].length > 0) {
+    const firstDir = parts[0].toLowerCase();
+    if (firstDir == "games") {
+      // This is in the relocatable paths. Set 'path' to 'pext' later.
+      pext = true;
+    }
+    if (firstDir.startsWith("_")) {
+      tags.push(firstDir.slice(1));
+    } else {
+      tags.push(firstDir);
+    }
   }
 
   return {
@@ -88,6 +100,8 @@ const parseFile = async (path, parentPath) => {
     hash,
     size: file.length,
     url: `${baseUrl}${urlPath}`,
+    pext,
+    tags,
   };
 };
 
@@ -109,36 +123,48 @@ const main = async () => {
       if (entry.isDirectory()) {
         let relativePath = posixPath(pathModule.relative(core.path, path));
 
+        const tags = [];
+        if (core.path.toLowerCase().contains(core.name.toLowerCase())) {
+          tags.push(core.name.toLowerCase());
+        }
+        
+        let pext = false;
         if (relativePath === "games" || relativePath.startsWith("games/")) {
-          // This is in the relocatable paths. Add | to start
-          relativePath = `|${relativePath}`;
+          // This is in the relocatable paths. Set 'path' to 'pext' later.
+          pext = true;
         }
 
-        folders.push(relativePath);
+        folders.push({path: relativePath, pext, tags});
       } else {
-        files.push(await parseFile(path, core.path));
+        files.push(await parseFile(path, core.path, core.name));
       }
     }
   }
 
   // Build the manifest
   const manifest = {
+    v: 1,
     db_id: dbID,
     timestamp: Math.floor(Date.now() / 1000),
     files: {},
     folders: {},
   };
 
-  for (const { path, hash, size, url } of files) {
+  for (const { path, hash, size, url, pext, tags } of files) {
     manifest.files[path] = {
       hash,
       size,
       url,
+      tags,
+      ...(pext ? {"path": "pext"} : {})
     };
   }
 
-  for (const folder of folders) {
-    manifest.folders[folder] = {};
+  for (const { path, pext, tags } of folders) {
+    manifest.folders[path] = {
+      tags,
+      ...(pext ? {"path": "pext"} : {})
+    };
   }
 
   console.log(manifest);

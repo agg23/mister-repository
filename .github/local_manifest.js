@@ -124,7 +124,7 @@ const main = async () => {
         let relativePath = posixPath(pathModule.relative(core.path, path));
 
         const tags = [];
-        if (core.path.toLowerCase().contains(core.name.toLowerCase())) {
+        if (core.path.toLowerCase().includes(core.name.toLowerCase())) {
           tags.push(core.name.toLowerCase());
         }
         

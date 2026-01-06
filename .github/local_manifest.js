@@ -122,10 +122,9 @@ const main = async () => {
 
       if (entry.isDirectory()) {
         let relativePath = posixPath(pathModule.relative(core.path, path));
-        console.log("folder: ", core.path, core.name);
 
         const tags = [];
-        if (relativePath.toLowerCase().includes(core.name.toLowerCase())) {
+        if (relativePath.startsWith("games/")) {
           tags.push(core.name.toLowerCase());
         }
         

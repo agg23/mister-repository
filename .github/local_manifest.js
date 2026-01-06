@@ -105,6 +105,35 @@ const parseFile = async (path, parentPath, coreName) => {
   };
 };
 
+const parseFolder = async (path, parentPath, coreName) => {
+  let relativePath = posixPath(pathModule.relative(parentPath, path));
+  const parts = relativePath.split("/");
+
+  const tags = [];
+  let pext = false;
+  if (parts[0].length > 0) {
+    const firstDir = parts[0].toLowerCase();
+    if (firstDir == "games") {
+      // This is in the relocatable paths. Set 'path' to 'pext' later.
+      pext = true;
+      if (parts.length > 1 && parts[1].length > 0) {
+        // This is a folder specific for this core.
+        tags.push(coreName.toLowerCase());
+      }
+    }
+    if (firstDir.startsWith("_")) {
+      tags.push(firstDir.slice(1));
+    } else {
+      tags.push(firstDir);
+    }
+  }
+  return {
+    path: relativePath,
+    pext,
+    tags,
+  };
+};
+
 const main = async () => {
   const files = [];
   const folders = [];
@@ -121,20 +150,7 @@ const main = async () => {
       }
 
       if (entry.isDirectory()) {
-        let relativePath = posixPath(pathModule.relative(core.path, path));
-
-        const tags = [];
-        if (relativePath.startsWith("games/")) {
-          tags.push(core.name.toLowerCase());
-        }
-        
-        let pext = false;
-        if (relativePath === "games" || relativePath.startsWith("games/")) {
-          // This is in the relocatable paths. Set 'path' to 'pext' later.
-          pext = true;
-        }
-
-        folders.push({path: relativePath, pext, tags});
+        folders.push(await parseFolder(path, core.path, core.name));
       } else {
         files.push(await parseFile(path, core.path, core.name));
       }

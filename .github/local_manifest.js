@@ -71,65 +71,71 @@ const shouldSkipEntry = (path) => {
 const posixPath = (path) =>
   path.split(pathModule.sep).join(pathModule.posix.sep);
 
-const parseFile = async (path, parentPath, coreName) => {
-  const file = await fs.readFile(path);
-  const hash = md5Hash(file);
-
-  let relativePath = posixPath(pathModule.relative(parentPath, path));
-  const urlPath = posixPath(pathModule.relative(assetDir, path));
-
-  const tags = [coreName.toLowerCase()];
+const extractPathMetadata = (relativePath, coreName, isFolder) => {
   const parts = relativePath.split("/");
-  let pext = false;
+  const tags = [];
+  let isRelocatable = false;
+
+  // Files always get the core name tag; folders only get it for nested game folders
+  if (!isFolder) {
+    tags.push(coreName.toLowerCase());
+  }
 
   if (parts[0].length > 0) {
     const firstDir = parts[0].toLowerCase();
-    if (firstDir == "games") {
-      // This is in the relocatable paths. Set 'path' to 'pext' later.
-      pext = true;
+
+    if (firstDir === "games") {
+      isRelocatable = true;
+      // For folders inside games/, add the core name tag
+      if (isFolder && parts.length > 1 && parts[1].length > 0) {
+        tags.push(coreName.toLowerCase());
+      }
     }
+
+    // Add directory tag (without leading underscore if present)
     if (firstDir.startsWith("_")) {
       tags.push(firstDir.slice(1));
     } else {
       tags.push(firstDir);
     }
   }
+
+  return { tags, isRelocatable };
+};
+
+const parseFile = async (path, parentPath, coreName) => {
+  const file = await fs.readFile(path);
+  const hash = md5Hash(file);
+
+  const relativePath = posixPath(pathModule.relative(parentPath, path));
+  const urlPath = posixPath(pathModule.relative(assetDir, path));
+  const { tags, isRelocatable } = extractPathMetadata(
+    relativePath,
+    coreName,
+    false,
+  );
 
   return {
     path: relativePath,
     hash,
     size: file.length,
     url: `${baseUrl}${urlPath}`,
-    pext,
+    isRelocatable,
     tags,
   };
 };
 
-const parseFolder = async (path, parentPath, coreName) => {
-  let relativePath = posixPath(pathModule.relative(parentPath, path));
-  const parts = relativePath.split("/");
+const parseFolder = (path, parentPath, coreName) => {
+  const relativePath = posixPath(pathModule.relative(parentPath, path));
+  const { tags, isRelocatable } = extractPathMetadata(
+    relativePath,
+    coreName,
+    true,
+  );
 
-  const tags = [];
-  let pext = false;
-  if (parts[0].length > 0) {
-    const firstDir = parts[0].toLowerCase();
-    if (firstDir == "games") {
-      // This is in the relocatable paths. Set 'path' to 'pext' later.
-      pext = true;
-      if (parts.length > 1 && parts[1].length > 0) {
-        // This is a folder specific for this core.
-        tags.push(coreName.toLowerCase());
-      }
-    }
-    if (firstDir.startsWith("_")) {
-      tags.push(firstDir.slice(1));
-    } else {
-      tags.push(firstDir);
-    }
-  }
   return {
     path: relativePath,
-    pext,
+    isRelocatable,
     tags,
   };
 };
@@ -150,7 +156,7 @@ const main = async () => {
       }
 
       if (entry.isDirectory()) {
-        folders.push(await parseFolder(path, core.path, core.name));
+        folders.push(parseFolder(path, core.path, core.name));
       } else {
         files.push(await parseFile(path, core.path, core.name));
       }
@@ -166,20 +172,21 @@ const main = async () => {
     folders: {},
   };
 
-  for (const { path, hash, size, url, pext, tags } of files) {
+  for (const { path, hash, size, url, isRelocatable, tags } of files) {
     manifest.files[path] = {
       hash,
       size,
       url,
       tags,
-      ...(pext ? {"path": "pext"} : {})
+      // "pext" is a special path that indicates the file can be relocated
+      ...(isRelocatable ? { path: "pext" } : {}),
     };
   }
 
-  for (const { path, pext, tags } of folders) {
+  for (const { path, isRelocatable, tags } of folders) {
     manifest.folders[path] = {
       tags,
-      ...(pext ? {"path": "pext"} : {})
+      ...(isRelocatable ? { path: "pext" } : {}),
     };
   }
 

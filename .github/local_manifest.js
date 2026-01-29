@@ -71,23 +71,72 @@ const shouldSkipEntry = (path) => {
 const posixPath = (path) =>
   path.split(pathModule.sep).join(pathModule.posix.sep);
 
-const parseFile = async (path, parentPath) => {
+const extractPathMetadata = (relativePath, coreName, isFolder) => {
+  const parts = relativePath.split("/");
+  const tags = [];
+  let isRelocatable = false;
+
+  // Files always get the core name tag; folders only get it for nested game folders
+  if (!isFolder) {
+    tags.push(coreName.toLowerCase());
+  }
+
+  if (parts[0].length > 0) {
+    const firstDir = parts[0].toLowerCase();
+
+    if (firstDir === "games") {
+      isRelocatable = true;
+      // For folders inside games/, add the core name tag
+      if (isFolder && parts.length > 1 && parts[1].length > 0) {
+        tags.push(coreName.toLowerCase());
+      }
+    }
+
+    // Add directory tag (without leading underscore if present)
+    if (firstDir.startsWith("_")) {
+      tags.push(firstDir.slice(1));
+    } else {
+      tags.push(firstDir);
+    }
+  }
+
+  return { tags, isRelocatable };
+};
+
+const parseFile = async (path, parentPath, coreName) => {
   const file = await fs.readFile(path);
   const hash = md5Hash(file);
 
-  let relativePath = posixPath(pathModule.relative(parentPath, path));
+  const relativePath = posixPath(pathModule.relative(parentPath, path));
   const urlPath = posixPath(pathModule.relative(assetDir, path));
-
-  if (relativePath.startsWith("games/")) {
-    // This is in the relocatable paths. Add | to start
-    relativePath = `|${relativePath}`;
-  }
+  const { tags, isRelocatable } = extractPathMetadata(
+    relativePath,
+    coreName,
+    false,
+  );
 
   return {
     path: relativePath,
     hash,
     size: file.length,
     url: `${baseUrl}${urlPath}`,
+    isRelocatable,
+    tags,
+  };
+};
+
+const parseFolder = (path, parentPath, coreName) => {
+  const relativePath = posixPath(pathModule.relative(parentPath, path));
+  const { tags, isRelocatable } = extractPathMetadata(
+    relativePath,
+    coreName,
+    true,
+  );
+
+  return {
+    path: relativePath,
+    isRelocatable,
+    tags,
   };
 };
 
@@ -107,38 +156,38 @@ const main = async () => {
       }
 
       if (entry.isDirectory()) {
-        let relativePath = posixPath(pathModule.relative(core.path, path));
-
-        if (relativePath === "games" || relativePath.startsWith("games/")) {
-          // This is in the relocatable paths. Add | to start
-          relativePath = `|${relativePath}`;
-        }
-
-        folders.push(relativePath);
+        folders.push(parseFolder(path, core.path, core.name));
       } else {
-        files.push(await parseFile(path, core.path));
+        files.push(await parseFile(path, core.path, core.name));
       }
     }
   }
 
   // Build the manifest
   const manifest = {
+    v: 1,
     db_id: dbID,
     timestamp: Math.floor(Date.now() / 1000),
     files: {},
     folders: {},
   };
 
-  for (const { path, hash, size, url } of files) {
+  for (const { path, hash, size, url, isRelocatable, tags } of files) {
     manifest.files[path] = {
       hash,
       size,
       url,
+      tags,
+      // "pext" is a special path that indicates the file can be relocated
+      ...(isRelocatable ? { path: "pext" } : {}),
     };
   }
 
-  for (const folder of folders) {
-    manifest.folders[folder] = {};
+  for (const { path, isRelocatable, tags } of folders) {
+    manifest.folders[path] = {
+      tags,
+      ...(isRelocatable ? { path: "pext" } : {}),
+    };
   }
 
   console.log(manifest);

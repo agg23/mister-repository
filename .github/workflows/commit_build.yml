@@ -1,5 +1,7 @@
-# When a commit is created and pushed
-on: push
+on:
+  push:
+    branches:
+      - master
 
 jobs:
   update_manifest:
